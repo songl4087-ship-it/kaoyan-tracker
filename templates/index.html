@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>考研任务管理</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>考研每日计划</h1>
+            <div class="date" id="today-date"></div>
+        </header>
+
+        <div id="today-section">
+            <div class="stats" id="stats"></div>
+            <div class="section">
+                <div class="section-title">
+                    <span>今日任务</span>
+                    <button class="btn btn-secondary btn-small" onclick="markRestDay()" id="rest-btn">标记休息</button>
+                </div>
+                <div id="today-tasks"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                <span>所有任务</span>
+            </div>
+            <div id="all-tasks"></div>
+        </div>
+    </div>
+
+    <button class="fab" onclick="showCreateModal()">+</button>
+
+    <div class="modal-overlay" id="create-modal">
+        <div class="modal">
+            <h3>新建任务</h3>
+            <div class="form-group">
+                <label>任务名称</label>
+                <input type="text" id="task-name" placeholder="如：数学真题">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>总量</label>
+                    <input type="number" id="task-total" placeholder="1000" min="1">
+                </div>
+                <div class="form-group">
+                    <label>单位</label>
+                    <select id="task-unit">
+                        <option value="题">题</option>
+                        <option value="页">页</option>
+                        <option value="章">章</option>
+                        <option value="节">节</option>
+                        <option value="个">个</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>开始日期</label>
+                    <input type="date" id="task-start">
+                </div>
+                <div class="form-group">
+                    <label>截止日期</label>
+                    <input type="date" id="task-deadline">
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn btn-secondary btn-block" onclick="hideCreateModal()">取消</button>
+                <button class="btn btn-primary btn-block" onclick="createTask()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="checkin-modal">
+        <div class="modal">
+            <h3 id="checkin-title">打卡</h3>
+            <p id="checkin-info" style="color:#666;font-size:0.85rem;margin-bottom:12px;"></p>
+            <div class="form-group">
+                <label>今日完成量</label>
+                <input type="number" id="checkin-amount" placeholder="0" min="0">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn btn-secondary btn-block" onclick="hideCheckinModal()">取消</button>
+                <button class="btn btn-success btn-block" onclick="submitCheckin()">确认打卡</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCheckinTaskId = null;
+
+        function formatDate(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return `${d.getMonth()+1}月${d.getDate()}日`;
+        }
+
+        function today() {
+            const d = new Date();
+            return d.toISOString().split('T')[0];
+        }
+
+        async function loadToday() {
+            const res = await fetch('/api/today');
+            const data = await res.json();
+
+            document.getElementById('today-date').textContent = formatDate(data.date);
+
+            const plans = data.plans;
+            const totalPlanned = plans.reduce((s, p) => s + p.planned, 0);
+            const totalDone = plans.reduce((s, p) => s + (p.actual || 0), 0);
+            const checkedCount = plans.filter(p => p.checked_in).length;
+
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <div class="value">${plans.length}</div>
+                    <div class="label">进行中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${checkedCount}/${plans.length}</div>
+                    <div class="label">已打卡</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value">${data.is_rest_day ? '休息日' : totalPlanned}</div>
+                    <div class="label">${data.is_rest_day ? '' : '今日总量'}</div>
+                </div>
+            `;
+
+            if (data.is_rest_day) {
+                document.getElementById('rest-btn').textContent = '休息中';
+                document.getElementById('rest-btn').disabled = true;
+            }
+
+            const container = document.getElementById('today-tasks');
+            if (plans.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>还没有任务，点击右下角 + 创建</p></div>';
+                return;
+            }
+
+            container.innerHTML = plans.map(p => {
+                const isChecked = p.checked_in;
+                const isRest = data.is_rest_day;
+                let cardClass = 'task-card';
+                if (isChecked) cardClass += ' completed-today';
+                if (isRest) cardClass += ' rest-day';
+
+                let statusTag = '';
+                if (isRest) statusTag = '<span class="tag tag-rest">休息</span>';
+                else if (isChecked) statusTag = `<span class="tag tag-done">已完成 ${p.actual}${p.unit}</span>`;
+
+                const progress = p.total > 0 ? (p.completed / p.total * 100).toFixed(1) : 0;
+
+                return `
+                    <div class="${cardClass}">
+                        <div class="task-name">${p.task_name} ${statusTag}</div>
+                        <div class="task-info">
+                            <span>总进度 ${p.completed}/${p.total}${p.unit} (${progress}%)</span>
+                            <span class="task-plan ${isChecked ? 'done' : ''}">${isRest ? '休息' : '今日 ' + p.planned + p.unit}</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
+                        ${!isChecked && !isRest ? `
+                            <div class="actions">
+                                <button class="btn btn-success btn-small" onclick="showCheckinModal(${p.task_id}, '${p.task_name}', ${p.planned}, '${p.unit}')">打卡</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function loadAllTasks() {
+            const res = await fetch('/api/tasks');
+            const tasks = await res.json();
+
+            const container = document.getElementById('all-tasks');
+            if (tasks.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>暂无任务</p></div>';
+                return;
+            }
+
+            container.innerHTML = tasks.map(t => {
+                let deadlineTag = '';
+                if (t.days_left < 0) deadlineTag = '<span class="tag tag-overdue">已过期</span>';
+                else if (t.days_left <= 7) deadlineTag = `<span class="tag tag-overdue">剩${t.days_left}天</span>`;
+
+                return `
+                    <div class="task-card">
+                        <div class="task-name">${t.name} ${deadlineTag}</div>
+                        <div class="task-info">
+                            <span>${t.completed}/${t.total}${t.unit} · 每日${t.daily_plan}${t.unit}</span>
+                            <span>截止 ${formatDate(t.deadline)}</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" style="width:${t.progress}%"></div></div>
+                        <div class="actions">
+                            <button class="btn btn-danger btn-small" onclick="deleteTask(${t.id}, '${t.name}')">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showCreateModal() {
+            document.getElementById('task-start').value = today();
+            document.getElementById('create-modal').classList.add('active');
+        }
+
+        function hideCreateModal() {
+            document.getElementById('create-modal').classList.remove('active');
+        }
+
+        function showCheckinModal(taskId, name, planned, unit) {
+            currentCheckinTaskId = taskId;
+            document.getElementById('checkin-title').textContent = `打卡 - ${name}`;
+            document.getElementById('checkin-info').textContent = `今日计划: ${planned}${unit}`;
+            document.getElementById('checkin-amount').value = planned;
+            document.getElementById('checkin-modal').classList.add('active');
+        }
+
+        function hideCheckinModal() {
+            document.getElementById('checkin-modal').classList.remove('active');
+            currentCheckinTaskId = null;
+        }
+
+        async function createTask() {
+            const name = document.getElementById('task-name').value.trim();
+            const total = parseInt(document.getElementById('task-total').value);
+            const unit = document.getElementById('task-unit').value;
+            const start_date = document.getElementById('task-start').value;
+            const deadline = document.getElementById('task-deadline').value;
+
+            if (!name || !total || !deadline) {
+                alert('请填写完整信息');
+                return;
+            }
+
+            const res = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, total, unit, start_date, deadline})
+            });
+
+            if (res.ok) {
+                hideCreateModal();
+                document.getElementById('task-name').value = '';
+                document.getElementById('task-total').value = '';
+                refresh();
+            } else {
+                const err = await res.json();
+                alert(err.error || '创建失败');
+            }
+        }
+
+        async function submitCheckin() {
+            const actual = parseInt(document.getElementById('checkin-amount').value) || 0;
+            const res = await fetch(`/api/tasks/${currentCheckinTaskId}/checkin`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({actual})
+            });
+
+            if (res.ok) {
+                hideCheckinModal();
+                refresh();
+            }
+        }
+
+        async function markRestDay() {
+            if (!confirm('确认标记今天为本周休息日？')) return;
+            await fetch('/api/rest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            });
+            refresh();
+        }
+
+        async function deleteTask(id, name) {
+            if (!confirm(`确认删除任务「${name}」？`)) return;
+            await fetch(`/api/tasks/${id}`, {method: 'DELETE'});
+            refresh();
+        }
+
+        function refresh() {
+            loadToday();
+            loadAllTasks();
+        }
+
+        document.querySelectorAll('.modal-overlay').forEach(el => {
+            el.addEventListener('click', (e) => {
+                if (e.target === el) {
+                    el.classList.remove('active');
+                }
+            });
+        });
+
+        refresh();
+    </script>
+</body>
+</html>
