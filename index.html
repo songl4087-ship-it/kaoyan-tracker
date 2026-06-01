@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>考研每日计划</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -121,7 +121,13 @@
         // ========== 配置 Supabase ==========
         const SUPABASE_URL = 'https://znhjcmcflhvjvgogqolr.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_T9--nJLrrdteRvS0dNqO9g_qBuTO1LH';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let supabase;
+        try {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch(e) {
+            console.error('Supabase init error:', e);
+            alert('数据库连接失败: ' + e.message);
+        }
 
         // ========== 工具函数 ==========
         function today() {
@@ -198,9 +204,13 @@
             const todayStr = today();
             document.getElementById('today-date').textContent = formatDate(todayStr);
 
-            const { data: tasks } = await supabase.from('tasks').select('*').order('deadline');
-            const { data: restDays } = await supabase.from('weekly_rests').select('*');
-            const { data: todayLogs } = await supabase.from('daily_logs').select('*').eq('date', todayStr);
+            if (!supabase) { document.getElementById('today-tasks').innerHTML = '<div class="empty-state"><p>数据库未连接</p></div>'; return; }
+
+            const { data: tasks, error: e1 } = await supabase.from('tasks').select('*').order('deadline');
+            const { data: restDays, error: e2 } = await supabase.from('weekly_rests').select('*');
+            const { data: todayLogs, error: e3 } = await supabase.from('daily_logs').select('*').eq('date', todayStr);
+
+            if (e1) { document.getElementById('today-tasks').innerHTML = `<div class="empty-state"><p>加载失败: ${e1.message}</p></div>`; return; }
 
             const isRestToday = restDays?.some(r => r.rest_date === todayStr) || false;
 
