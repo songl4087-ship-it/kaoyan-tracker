@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>考研每日计划</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa; color: #333; min-height: 100vh; padding-bottom: 80px;
+        }
+        .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+        header { text-align: center; padding: 20px 0; border-bottom: 1px solid #e0e0e0; margin-bottom: 20px; }
+        header h1 { font-size: 1.5rem; color: #2c3e50; }
+        header .date { color: #666; font-size: 0.9rem; margin-top: 4px; }
+        .section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .section-title { font-size: 1rem; font-weight: 600; color: #2c3e50; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        .task-card { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #4a90d9; }
+        .task-card.done { border-left-color: #27ae60; }
+        .task-card.rest { border-left-color: #95a5a6; opacity: 0.7; }
+        .task-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .task-info { font-size: 0.8rem; color: #666; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .task-plan { font-size: 1.1rem; font-weight: 700; color: #4a90d9; }
+        .task-plan.done { color: #27ae60; }
+        .progress-bar { width: 100%; height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #4a90d9, #67b8f7); border-radius: 3px; transition: width 0.3s; }
+        .btn { display: inline-block; padding: 8px 16px; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: #4a90d9; color: #fff; }
+        .btn-primary:hover { background: #3a7bc8; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-secondary { background: #95a5a6; color: #fff; }
+        .btn-small { padding: 4px 10px; font-size: 0.75rem; }
+        .btn-block { display: block; width: 100%; text-align: center; padding: 12px; }
+        .actions { display: flex; gap: 8px; margin-top: 8px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 4px; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #4a90d9; }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: flex-end; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: #fff; border-radius: 16px 16px 0 0; padding: 24px 16px; width: 100%; max-width: 600px; max-height: 80vh; overflow-y: auto; animation: slideUp 0.3s ease; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal h3 { margin-bottom: 16px; font-size: 1.1rem; }
+        .fab { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #4a90d9; color: #fff; border: none; font-size: 1.5rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .fab:hover { background: #3a7bc8; }
+        .stats { display: flex; gap: 12px; margin-bottom: 16px; }
+        .stat-card { flex: 1; text-align: center; background: #f8f9fa; border-radius: 8px; padding: 12px 8px; }
+        .stat-card .value { font-size: 1.3rem; font-weight: 700; color: #2c3e50; }
+        .stat-card .label { font-size: 0.75rem; color: #999; margin-top: 2px; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 500; }
+        .tag-done { background: #d4edda; color: #155724; }
+        .tag-overdue { background: #f8d7da; color: #721c24; }
+        .tag-rest { background: #f0f0f0; color: #666; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #999; }
+        .loading { text-align: center; padding: 40px; color: #999; }
+        @media (max-width: 480px) { .container { padding: 12px; } header h1 { font-size: 1.3rem; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>考研每日计划</h1>
+            <div class="date" id="today-date"></div>
+        </header>
+        <div class="stats" id="stats"></div>
+        <div class="section">
+            <div class="section-title">
+                <span>今日任务</span>
+                <button class="btn btn-secondary btn-small" onclick="markRestDay()" id="rest-btn">标记休息</button>
+            </div>
+            <div id="today-tasks"><div class="loading">加载中...</div></div>
+        </div>
+        <div class="section">
+            <div class="section-title"><span>所有任务</span></div>
+            <div id="all-tasks"></div>
+        </div>
+    </div>
+
+    <button class="fab" onclick="showCreateModal()">+</button>
+
+    <div class="modal-overlay" id="create-modal">
+        <div class="modal">
+            <h3>新建任务</h3>
+            <div class="form-group"><label>任务名称</label><input type="text" id="task-name" placeholder="如：数学真题"></div>
+            <div class="form-row">
+                <div class="form-group"><label>总量</label><input type="number" id="task-total" placeholder="1000" min="1"></div>
+                <div class="form-group"><label>单位</label>
+                    <select id="task-unit"><option value="题">题</option><option value="页">页</option><option value="章">章</option><option value="节">节</option><option value="个">个</option></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>开始日期</label><input type="date" id="task-start"></div>
+                <div class="form-group"><label>截止日期</label><input type="date" id="task-deadline"></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn btn-secondary btn-block" onclick="hideModal('create-modal')">取消</button>
+                <button class="btn btn-primary btn-block" onclick="createTask()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="checkin-modal">
+        <div class="modal">
+            <h3 id="checkin-title">打卡</h3>
+            <p id="checkin-info" style="color:#666;font-size:0.85rem;margin-bottom:12px;"></p>
+            <div class="form-group"><label>今日完成量</label><input type="number" id="checkin-amount" min="0"></div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn btn-secondary btn-block" onclick="hideModal('checkin-modal')">取消</button>
+                <button class="btn btn-success btn-block" onclick="submitCheckin()">确认打卡</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== 配置 Supabase ==========
+        const SUPABASE_URL = 'https://znhjcmcflhvjvgogqolr.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_T9--nJLrrdteRvS0dNqO9g_qBuTO1LH';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // ========== 工具函数 ==========
+        function today() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        function formatDate(str) {
+            const d = new Date(str + 'T00:00:00');
+            return `${d.getMonth()+1}月${d.getDate()}日`;
+        }
+
+        function getWeekStart(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const day = d.getDay() || 7;
+            d.setDate(d.getDate() - day + 1);
+            return d.toISOString().split('T')[0];
+        }
+
+        // ========== 核心算法：计算每日任务量 ==========
+        function countFutureRestDays(startStr, endStr, restDays) {
+            const start = new Date(startStr + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            const confirmedWeeks = new Set();
+            let count = 0;
+
+            for (const r of restDays) {
+                const rd = new Date(r.rest_date + 'T00:00:00');
+                if (rd >= start && rd <= end) {
+                    count++;
+                    confirmedWeeks.add(r.week_start);
+                }
+            }
+
+            const cur = new Date(start);
+            while (cur <= end) {
+                const ws = getWeekStart(cur.toISOString().split('T')[0]);
+                const weekEnd = new Date(ws + 'T00:00:00');
+                weekEnd.setDate(weekEnd.getDate() + 6);
+
+                if (!confirmedWeeks.has(ws)) {
+                    const effStart = cur > start ? cur : start;
+                    const effEnd = weekEnd < end ? weekEnd : end;
+                    const daysInWeek = Math.floor((effEnd - effStart) / 86400000) + 1;
+                    if (daysInWeek >= 3) count++;
+                }
+                cur.setTime(weekEnd.getTime() + 86400000);
+            }
+            return count;
+        }
+
+        function calculateDailyPlan(task, todayStr, restDays, isRestToday) {
+            if (isRestToday) return 0;
+            const remaining = task.total - task.completed;
+            if (remaining <= 0) return 0;
+            if (todayStr < task.start_date) return 0;
+            if (todayStr > task.deadline) return remaining;
+
+            const deadlineDate = new Date(task.deadline + 'T00:00:00');
+            const todayDate = new Date(todayStr + 'T00:00:00');
+            const daysLeft = Math.floor((deadlineDate - todayDate) / 86400000) + 1;
+            if (daysLeft <= 0) return remaining;
+
+            const futureRests = countFutureRestDays(todayStr, task.deadline, restDays);
+            let workingDays = daysLeft - futureRests;
+            if (workingDays <= 0) workingDays = 1;
+
+            return Math.ceil(remaining / workingDays);
+        }
+
+        // ========== 数据操作 ==========
+        let currentCheckinTaskId = null;
+
+        async function loadData() {
+            const todayStr = today();
+            document.getElementById('today-date').textContent = formatDate(todayStr);
+
+            const { data: tasks } = await supabase.from('tasks').select('*').order('deadline');
+            const { data: restDays } = await supabase.from('weekly_rests').select('*');
+            const { data: todayLogs } = await supabase.from('daily_logs').select('*').eq('date', todayStr);
+
+            const isRestToday = restDays?.some(r => r.rest_date === todayStr) || false;
+
+            if (isRestToday) {
+                document.getElementById('rest-btn').textContent = '休息中';
+                document.getElementById('rest-btn').disabled = true;
+            } else {
+                document.getElementById('rest-btn').textContent = '标记休息';
+                document.getElementById('rest-btn').disabled = false;
+            }
+
+            const plans = (tasks || []).map(task => {
+                const log = todayLogs?.find(l => l.task_id === task.id);
+                const planned = calculateDailyPlan(task, todayStr, restDays || [], isRestToday);
+                return { task, planned, actual: log?.actual ?? null, checkedIn: log?.actual != null };
+            });
+
+            renderStats(plans, isRestToday);
+            renderTodayTasks(plans, isRestToday);
+            renderAllTasks(tasks || [], todayStr, restDays || []);
+        }
+
+        function renderStats(plans, isRest) {
+            const total = plans.length;
+            const checked = plans.filter(p => p.checkedIn).length;
+            const totalPlanned = plans.reduce((s, p) => s + p.planned, 0);
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card"><div class="value">${total}</div><div class="label">进行中</div></div>
+                <div class="stat-card"><div class="value">${checked}/${total}</div><div class="label">已打卡</div></div>
+                <div class="stat-card"><div class="value">${isRest ? '休息日' : totalPlanned}</div><div class="label">${isRest ? '' : '今日总量'}</div></div>
+            `;
+        }
+
+        function renderTodayTasks(plans, isRest) {
+            const container = document.getElementById('today-tasks');
+            if (plans.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>还没有任务，点击右下角 + 创建</p></div>';
+                return;
+            }
+            container.innerHTML = plans.map(p => {
+                const progress = p.task.total > 0 ? (p.task.completed / p.task.total * 100).toFixed(1) : 0;
+                let cardClass = 'task-card';
+                let tag = '';
+                if (isRest) { cardClass += ' rest'; tag = '<span class="tag tag-rest">休息</span>'; }
+                else if (p.checkedIn) { cardClass += ' done'; tag = `<span class="tag tag-done">已完成 ${p.actual}${p.task.unit}</span>`; }
+
+                return `<div class="${cardClass}">
+                    <div class="task-name"><span>${p.task.name}</span>${tag}</div>
+                    <div class="task-info">
+                        <span>${p.task.completed}/${p.task.total}${p.task.unit} (${progress}%)</span>
+                        <span class="task-plan ${p.checkedIn?'done':''}">${isRest ? '休息' : '今日 '+p.planned+p.task.unit}</span>
+                    </div>
+                    <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
+                    ${!p.checkedIn && !isRest ? `<div class="actions"><button class="btn btn-success btn-small" onclick="showCheckin(${p.task.id},'${p.task.name}',${p.planned},'${p.task.unit}')">打卡</button></div>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        function renderAllTasks(tasks, todayStr, restDays) {
+            const container = document.getElementById('all-tasks');
+            if (tasks.length === 0) { container.innerHTML = '<div class="empty-state"><p>暂无任务</p></div>'; return; }
+            container.innerHTML = tasks.map(t => {
+                const daysLeft = Math.floor((new Date(t.deadline+'T00:00:00') - new Date(todayStr+'T00:00:00')) / 86400000);
+                const progress = t.total > 0 ? (t.completed / t.total * 100).toFixed(1) : 0;
+                const daily = calculateDailyPlan(t, todayStr, restDays, false);
+                let tag = '';
+                if (daysLeft < 0) tag = '<span class="tag tag-overdue">已过期</span>';
+                else if (daysLeft <= 7) tag = `<span class="tag tag-overdue">剩${daysLeft}天</span>`;
+
+                return `<div class="task-card">
+                    <div class="task-name"><span>${t.name}</span>${tag}</div>
+                    <div class="task-info"><span>${t.completed}/${t.total}${t.unit} · 每日${daily}${t.unit}</span><span>截止 ${formatDate(t.deadline)}</span></div>
+                    <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
+                    <div class="actions"><button class="btn btn-danger btn-small" onclick="deleteTask(${t.id},'${t.name}')">删除</button></div>
+                </div>`;
+            }).join('');
+        }
+
+        // ========== 操作 ==========
+        async function createTask() {
+            const name = document.getElementById('task-name').value.trim();
+            const total = parseInt(document.getElementById('task-total').value);
+            const unit = document.getElementById('task-unit').value;
+            const start_date = document.getElementById('task-start').value;
+            const deadline = document.getElementById('task-deadline').value;
+            if (!name || !total || !deadline) { alert('请填写完整信息'); return; }
+
+            await supabase.from('tasks').insert({ name, unit, total, completed: 0, start_date: start_date || today(), deadline });
+            hideModal('create-modal');
+            document.getElementById('task-name').value = '';
+            document.getElementById('task-total').value = '';
+            loadData();
+        }
+
+        async function submitCheckin() {
+            const actual = parseInt(document.getElementById('checkin-amount').value) || 0;
+            const todayStr = today();
+
+            await supabase.from('daily_logs').upsert(
+                { task_id: currentCheckinTaskId, date: todayStr, actual },
+                { onConflict: 'task_id,date' }
+            );
+
+            const { data: logs } = await supabase.from('daily_logs').select('actual').eq('task_id', currentCheckinTaskId).not('actual', 'is', null);
+            const totalDone = (logs || []).reduce((s, l) => s + l.actual, 0);
+            await supabase.from('tasks').update({ completed: totalDone }).eq('id', currentCheckinTaskId);
+
+            hideModal('checkin-modal');
+            loadData();
+        }
+
+        async function markRestDay() {
+            if (!confirm('确认标记今天为本周休息日？')) return;
+            const todayStr = today();
+            const weekStart = getWeekStart(todayStr);
+            await supabase.from('weekly_rests').upsert(
+                { week_start: weekStart, rest_date: todayStr },
+                { onConflict: 'week_start' }
+            );
+            loadData();
+        }
+
+        async function deleteTask(id, name) {
+            if (!confirm(`确认删除任务「${name}」？`)) return;
+            await supabase.from('daily_logs').delete().eq('task_id', id);
+            await supabase.from('tasks').delete().eq('id', id);
+            loadData();
+        }
+
+        function showCreateModal() {
+            document.getElementById('task-start').value = today();
+            document.getElementById('create-modal').classList.add('active');
+        }
+
+        function showCheckin(taskId, name, planned, unit) {
+            currentCheckinTaskId = taskId;
+            document.getElementById('checkin-title').textContent = `打卡 - ${name}`;
+            document.getElementById('checkin-info').textContent = `今日计划: ${planned}${unit}`;
+            document.getElementById('checkin-amount').value = planned;
+            document.getElementById('checkin-modal').classList.add('active');
+        }
+
+        function hideModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        document.querySelectorAll('.modal-overlay').forEach(el => {
+            el.addEventListener('click', e => { if (e.target === el) el.classList.remove('active'); });
+        });
+
+        // 启动
+        loadData();
+    </script>
+</body>
+</html>
