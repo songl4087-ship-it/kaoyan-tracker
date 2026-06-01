@@ -57,6 +57,10 @@
         .tag-done { background: #d4edda; color: #155724; }
         .tag-overdue { background: #f8d7da; color: #721c24; }
         .tag-rest { background: #f0f0f0; color: #666; }
+        .tab-bar { display: flex; gap: 0; overflow-x: auto; border-bottom: 2px solid #e0e0e0; margin-bottom: 12px; -webkit-overflow-scrolling: touch; }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab-item { padding: 8px 14px; font-size: 0.85rem; font-weight: 500; color: #999; cursor: pointer; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+        .tab-item.active { color: #4a90d9; border-bottom-color: #4a90d9; }
         .tag-select { display: flex; flex-wrap: wrap; gap: 8px; }
         .tag-option { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 16px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
         .tag-option:has(input:checked) { background: #4a90d9; border-color: #4a90d9; color: #fff; }
@@ -82,7 +86,10 @@
             </div>
             <div id="today-tasks"><div class="loading">加载中...</div></div>
         </div>
-        <div id="task-sections"></div>
+        <div class="section">
+            <div class="tab-bar" id="tab-bar"></div>
+            <div id="tab-content"></div>
+        </div>
     </div>
 
     <button class="fab" onclick="showCreateModal()">+</button>
@@ -317,6 +324,10 @@
         }
 
         const ALL_TAGS = ['词汇','语法','笔译','百科','政治','作文'];
+        let currentTab = '全部';
+        let cachedTasks = [];
+        let cachedTodayStr = '';
+        let cachedRestDays = [];
 
         function renderTaskCard(t, todayStr, restDays) {
             const daysLeft = Math.floor((new Date(t.deadline+'T00:00:00') - new Date(todayStr+'T00:00:00')) / 86400000);
@@ -339,29 +350,41 @@
             </div>`;
         }
 
-        function renderAllTasks(tasks, todayStr, restDays) {
-            const container = document.getElementById('task-sections');
-            if (tasks.length === 0) { container.innerHTML = '<div class="section"><div class="empty-state"><p>暂无任务</p></div></div>'; return; }
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.tab === tab);
+            });
+            renderTabContent();
+        }
 
-            let html = '';
-
-            // 所有任务板块
-            html += `<div class="section">
-                <div class="section-title"><span>所有任务</span></div>
-                ${tasks.map(t => renderTaskCard(t, todayStr, restDays)).join('')}
-            </div>`;
-
-            // 按标签分栏
-            for (const tag of ALL_TAGS) {
-                const filtered = tasks.filter(t => t.tags && t.tags.split(',').includes(tag));
-                if (filtered.length === 0) continue;
-                html += `<div class="section">
-                    <div class="section-title"><span>${tag}</span><span class="tag-label">${filtered.length}个任务</span></div>
-                    ${filtered.map(t => renderTaskCard(t, todayStr, restDays)).join('')}
-                </div>`;
+        function renderTabContent() {
+            const container = document.getElementById('tab-content');
+            let filtered;
+            if (currentTab === '全部') {
+                filtered = cachedTasks;
+            } else {
+                filtered = cachedTasks.filter(t => t.tags && t.tags.split(',').includes(currentTab));
             }
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>该分类暂无任务</p></div>';
+            } else {
+                container.innerHTML = filtered.map(t => renderTaskCard(t, cachedTodayStr, cachedRestDays)).join('');
+            }
+        }
 
-            container.innerHTML = html;
+        function renderAllTasks(tasks, todayStr, restDays) {
+            cachedTasks = tasks;
+            cachedTodayStr = todayStr;
+            cachedRestDays = restDays;
+
+            const tabBar = document.getElementById('tab-bar');
+            const tabs = ['全部', ...ALL_TAGS];
+            tabBar.innerHTML = tabs.map(tab =>
+                `<div class="tab-item ${tab === currentTab ? 'active' : ''}" data-tab="${tab}" onclick="switchTab('${tab}')">${tab}</div>`
+            ).join('');
+
+            renderTabContent();
         }
 
         // ========== 操作 ==========
