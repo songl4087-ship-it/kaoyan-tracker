@@ -57,6 +57,12 @@
         .tag-done { background: #d4edda; color: #155724; }
         .tag-overdue { background: #f8d7da; color: #721c24; }
         .tag-rest { background: #f0f0f0; color: #666; }
+        .tag-select { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag-option { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 16px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+        .tag-option:has(input:checked) { background: #4a90d9; border-color: #4a90d9; color: #fff; }
+        .tag-option input { display: none; }
+        .task-tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+        .task-tags .tag-label { background: #e8f0fe; color: #4a90d9; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; }
         .empty-state { text-align: center; padding: 40px 20px; color: #999; }
         .loading { text-align: center; padding: 40px; color: #999; }
         @media (max-width: 480px) { .container { padding: 12px; } header h1 { font-size: 1.3rem; } }
@@ -98,9 +104,50 @@
                 <div class="form-group"><label>开始日期</label><input type="date" id="task-start"></div>
                 <div class="form-group"><label>截止日期</label><input type="date" id="task-deadline"></div>
             </div>
+            <div class="form-group"><label>标签（可多选）</label>
+                <div class="tag-select" id="task-tags">
+                    <label class="tag-option"><input type="checkbox" value="词汇"><span>词汇</span></label>
+                    <label class="tag-option"><input type="checkbox" value="语法"><span>语法</span></label>
+                    <label class="tag-option"><input type="checkbox" value="笔译"><span>笔译</span></label>
+                    <label class="tag-option"><input type="checkbox" value="百科"><span>百科</span></label>
+                    <label class="tag-option"><input type="checkbox" value="政治"><span>政治</span></label>
+                    <label class="tag-option"><input type="checkbox" value="作文"><span>作文</span></label>
+                </div>
+            </div>
             <div style="display:flex;gap:10px;margin-top:16px;">
                 <button class="btn btn-secondary btn-block" onclick="hideModal('create-modal')">取消</button>
                 <button class="btn btn-primary btn-block" onclick="createTask()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal">
+            <h3>编辑任务</h3>
+            <div class="form-group"><label>任务名称</label><input type="text" id="edit-name"></div>
+            <div class="form-row">
+                <div class="form-group"><label>总量</label><input type="number" id="edit-total" min="1"></div>
+                <div class="form-group"><label>单位</label>
+                    <select id="edit-unit"><option value="题">题</option><option value="页">页</option><option value="章">章</option><option value="节">节</option><option value="个">个</option></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>开始日期</label><input type="date" id="edit-start"></div>
+                <div class="form-group"><label>截止日期</label><input type="date" id="edit-deadline"></div>
+            </div>
+            <div class="form-group"><label>标签（可多选）</label>
+                <div class="tag-select" id="edit-tags">
+                    <label class="tag-option"><input type="checkbox" value="词汇"><span>词汇</span></label>
+                    <label class="tag-option"><input type="checkbox" value="语法"><span>语法</span></label>
+                    <label class="tag-option"><input type="checkbox" value="笔译"><span>笔译</span></label>
+                    <label class="tag-option"><input type="checkbox" value="百科"><span>百科</span></label>
+                    <label class="tag-option"><input type="checkbox" value="政治"><span>政治</span></label>
+                    <label class="tag-option"><input type="checkbox" value="作文"><span>作文</span></label>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px;">
+                <button class="btn btn-secondary btn-block" onclick="hideModal('edit-modal')">取消</button>
+                <button class="btn btn-primary btn-block" onclick="saveEdit()">保存</button>
             </div>
         </div>
     </div>
@@ -279,32 +326,78 @@
                 const daysLeft = Math.floor((new Date(t.deadline+'T00:00:00') - new Date(todayStr+'T00:00:00')) / 86400000);
                 const progress = t.total > 0 ? (t.completed / t.total * 100).toFixed(1) : 0;
                 const daily = calculateDailyPlan(t, todayStr, restDays, false);
-                let tag = '';
-                if (daysLeft < 0) tag = '<span class="tag tag-overdue">已过期</span>';
-                else if (daysLeft <= 7) tag = `<span class="tag tag-overdue">剩${daysLeft}天</span>`;
+                let deadlineTag = '';
+                if (daysLeft < 0) deadlineTag = '<span class="tag tag-overdue">已过期</span>';
+                else if (daysLeft <= 7) deadlineTag = `<span class="tag tag-overdue">剩${daysLeft}天</span>`;
+                const tagsHtml = t.tags ? t.tags.split(',').filter(x=>x).map(x => `<span class="tag-label">${x}</span>`).join('') : '';
 
                 return `<div class="task-card">
-                    <div class="task-name"><span>${t.name}</span>${tag}</div>
+                    <div class="task-name"><span>${t.name}</span>${deadlineTag}</div>
+                    ${tagsHtml ? `<div class="task-tags">${tagsHtml}</div>` : ''}
                     <div class="task-info"><span>${t.completed}/${t.total}${t.unit} · 每日${daily}${t.unit}</span><span>截止 ${formatDate(t.deadline)}</span></div>
                     <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
-                    <div class="actions"><button class="btn btn-danger btn-small" onclick="deleteTask(${t.id},'${t.name}')">删除</button></div>
+                    <div class="actions">
+                        <button class="btn btn-primary btn-small" onclick="showEditModal(${t.id})">编辑</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteTask(${t.id},'${t.name}')">删除</button>
+                    </div>
                 </div>`;
             }).join('');
         }
 
         // ========== 操作 ==========
+        function getSelectedTags(containerId) {
+            return Array.from(document.querySelectorAll(`#${containerId} input:checked`)).map(el => el.value).join(',');
+        }
+
+        function setSelectedTags(containerId, tagsStr) {
+            document.querySelectorAll(`#${containerId} input`).forEach(el => {
+                el.checked = tagsStr && tagsStr.split(',').includes(el.value);
+            });
+        }
+
         async function createTask() {
             const name = document.getElementById('task-name').value.trim();
             const total = parseInt(document.getElementById('task-total').value);
             const unit = document.getElementById('task-unit').value;
             const start_date = document.getElementById('task-start').value;
             const deadline = document.getElementById('task-deadline').value;
+            const tags = getSelectedTags('task-tags');
             if (!name || !total || !deadline) { alert('请填写完整信息'); return; }
 
-            await supabase.from('tasks').insert({ name, unit, total, completed: 0, start_date: start_date || today(), deadline });
+            await supabase.from('tasks').insert({ name, unit, total, completed: 0, start_date: start_date || today(), deadline, tags });
             hideModal('create-modal');
             document.getElementById('task-name').value = '';
             document.getElementById('task-total').value = '';
+            document.querySelectorAll('#task-tags input').forEach(el => el.checked = false);
+            loadData();
+        }
+
+        let editingTaskId = null;
+
+        async function showEditModal(id) {
+            const { data: task } = await supabase.from('tasks').select('*').eq('id', id).single();
+            if (!task) return;
+            editingTaskId = id;
+            document.getElementById('edit-name').value = task.name;
+            document.getElementById('edit-total').value = task.total;
+            document.getElementById('edit-unit').value = task.unit;
+            document.getElementById('edit-start').value = task.start_date;
+            document.getElementById('edit-deadline').value = task.deadline;
+            setSelectedTags('edit-tags', task.tags || '');
+            document.getElementById('edit-modal').classList.add('active');
+        }
+
+        async function saveEdit() {
+            const name = document.getElementById('edit-name').value.trim();
+            const total = parseInt(document.getElementById('edit-total').value);
+            const unit = document.getElementById('edit-unit').value;
+            const start_date = document.getElementById('edit-start').value;
+            const deadline = document.getElementById('edit-deadline').value;
+            const tags = getSelectedTags('edit-tags');
+            if (!name || !total || !deadline) { alert('请填写完整信息'); return; }
+
+            await supabase.from('tasks').update({ name, unit, total, start_date, deadline, tags }).eq('id', editingTaskId);
+            hideModal('edit-modal');
             loadData();
         }
 
