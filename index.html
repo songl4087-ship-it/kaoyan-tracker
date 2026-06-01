@@ -82,10 +82,7 @@
             </div>
             <div id="today-tasks"><div class="loading">加载中...</div></div>
         </div>
-        <div class="section">
-            <div class="section-title"><span>所有任务</span></div>
-            <div id="all-tasks"></div>
-        </div>
+        <div id="task-sections"></div>
     </div>
 
     <button class="fab" onclick="showCreateModal()">+</button>
@@ -319,29 +316,52 @@
             }).join('');
         }
 
-        function renderAllTasks(tasks, todayStr, restDays) {
-            const container = document.getElementById('all-tasks');
-            if (tasks.length === 0) { container.innerHTML = '<div class="empty-state"><p>暂无任务</p></div>'; return; }
-            container.innerHTML = tasks.map(t => {
-                const daysLeft = Math.floor((new Date(t.deadline+'T00:00:00') - new Date(todayStr+'T00:00:00')) / 86400000);
-                const progress = t.total > 0 ? (t.completed / t.total * 100).toFixed(1) : 0;
-                const daily = calculateDailyPlan(t, todayStr, restDays, false);
-                let deadlineTag = '';
-                if (daysLeft < 0) deadlineTag = '<span class="tag tag-overdue">已过期</span>';
-                else if (daysLeft <= 7) deadlineTag = `<span class="tag tag-overdue">剩${daysLeft}天</span>`;
-                const tagsHtml = t.tags ? t.tags.split(',').filter(x=>x).map(x => `<span class="tag-label">${x}</span>`).join('') : '';
+        const ALL_TAGS = ['词汇','语法','笔译','百科','政治','作文'];
 
-                return `<div class="task-card">
-                    <div class="task-name"><span>${t.name}</span>${deadlineTag}</div>
-                    ${tagsHtml ? `<div class="task-tags">${tagsHtml}</div>` : ''}
-                    <div class="task-info"><span>${t.completed}/${t.total}${t.unit} · 每日${daily}${t.unit}</span><span>截止 ${formatDate(t.deadline)}</span></div>
-                    <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
-                    <div class="actions">
-                        <button class="btn btn-primary btn-small" onclick="showEditModal(${t.id})">编辑</button>
-                        <button class="btn btn-danger btn-small" onclick="deleteTask(${t.id},'${t.name}')">删除</button>
-                    </div>
+        function renderTaskCard(t, todayStr, restDays) {
+            const daysLeft = Math.floor((new Date(t.deadline+'T00:00:00') - new Date(todayStr+'T00:00:00')) / 86400000);
+            const progress = t.total > 0 ? (t.completed / t.total * 100).toFixed(1) : 0;
+            const daily = calculateDailyPlan(t, todayStr, restDays, false);
+            let deadlineTag = '';
+            if (daysLeft < 0) deadlineTag = '<span class="tag tag-overdue">已过期</span>';
+            else if (daysLeft <= 7) deadlineTag = `<span class="tag tag-overdue">剩${daysLeft}天</span>`;
+            const tagsHtml = t.tags ? t.tags.split(',').filter(x=>x).map(x => `<span class="tag-label">${x}</span>`).join('') : '';
+
+            return `<div class="task-card">
+                <div class="task-name"><span>${t.name}</span>${deadlineTag}</div>
+                ${tagsHtml ? `<div class="task-tags">${tagsHtml}</div>` : ''}
+                <div class="task-info"><span>${t.completed}/${t.total}${t.unit} · 每日${daily}${t.unit}</span><span>截止 ${formatDate(t.deadline)}</span></div>
+                <div class="progress-bar"><div class="fill" style="width:${progress}%"></div></div>
+                <div class="actions">
+                    <button class="btn btn-primary btn-small" onclick="showEditModal(${t.id})">编辑</button>
+                    <button class="btn btn-danger btn-small" onclick="deleteTask(${t.id},'${t.name}')">删除</button>
+                </div>
+            </div>`;
+        }
+
+        function renderAllTasks(tasks, todayStr, restDays) {
+            const container = document.getElementById('task-sections');
+            if (tasks.length === 0) { container.innerHTML = '<div class="section"><div class="empty-state"><p>暂无任务</p></div></div>'; return; }
+
+            let html = '';
+
+            // 所有任务板块
+            html += `<div class="section">
+                <div class="section-title"><span>所有任务</span></div>
+                ${tasks.map(t => renderTaskCard(t, todayStr, restDays)).join('')}
+            </div>`;
+
+            // 按标签分栏
+            for (const tag of ALL_TAGS) {
+                const filtered = tasks.filter(t => t.tags && t.tags.split(',').includes(tag));
+                if (filtered.length === 0) continue;
+                html += `<div class="section">
+                    <div class="section-title"><span>${tag}</span><span class="tag-label">${filtered.length}个任务</span></div>
+                    ${filtered.map(t => renderTaskCard(t, todayStr, restDays)).join('')}
                 </div>`;
-            }).join('');
+            }
+
+            container.innerHTML = html;
         }
 
         // ========== 操作 ==========
