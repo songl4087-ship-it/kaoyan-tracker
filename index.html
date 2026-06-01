@@ -131,50 +131,55 @@
 
         // ========== 工具函数 ==========
         function today() {
-            return new Date().toISOString().split('T')[0];
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
         function formatDate(str) {
-            const d = new Date(str + 'T00:00:00');
-            return `${d.getMonth()+1}月${d.getDate()}日`;
+            const parts = str.split('-');
+            return `${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+        }
+
+        function toLocalDateStr(d) {
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+
+        function addDays(dateStr, n) {
+            const d = new Date(dateStr + 'T12:00:00');
+            d.setDate(d.getDate() + n);
+            return toLocalDateStr(d);
+        }
+
+        function diffDays(dateStr1, dateStr2) {
+            const d1 = new Date(dateStr1 + 'T12:00:00');
+            const d2 = new Date(dateStr2 + 'T12:00:00');
+            return Math.round((d2 - d1) / 86400000);
         }
 
         function getWeekStart(dateStr) {
-            const d = new Date(dateStr + 'T00:00:00');
+            const d = new Date(dateStr + 'T12:00:00');
             const day = d.getDay() || 7;
             d.setDate(d.getDate() - day + 1);
-            return d.toISOString().split('T')[0];
+            return toLocalDateStr(d);
         }
 
         // ========== 核心算法：计算每日任务量 ==========
         function countFutureRestDays(startStr, endStr, restDays) {
-            const start = new Date(startStr + 'T00:00:00');
-            const end = new Date(endStr + 'T00:00:00');
             const confirmedWeeks = new Set();
             let count = 0;
 
             for (const r of restDays) {
-                const rd = new Date(r.rest_date + 'T00:00:00');
-                if (rd >= start && rd <= end) {
+                if (r.rest_date >= startStr && r.rest_date <= endStr) {
                     count++;
                     confirmedWeeks.add(r.week_start);
                 }
             }
 
-            const cur = new Date(start);
-            while (cur <= end) {
-                const ws = getWeekStart(cur.toISOString().split('T')[0]);
-                const weekEnd = new Date(ws + 'T00:00:00');
-                weekEnd.setDate(weekEnd.getDate() + 6);
+            const totalDays = diffDays(startStr, endStr) + 1;
+            const totalWeeks = Math.ceil(totalDays / 7);
+            const unconfirmedWeeks = totalWeeks - confirmedWeeks.size;
+            count += Math.max(0, unconfirmedWeeks);
 
-                if (!confirmedWeeks.has(ws)) {
-                    const effStart = cur > start ? cur : start;
-                    const effEnd = weekEnd < end ? weekEnd : end;
-                    const daysInWeek = Math.floor((effEnd - effStart) / 86400000) + 1;
-                    if (daysInWeek >= 3) count++;
-                }
-                cur.setTime(weekEnd.getTime() + 86400000);
-            }
             return count;
         }
 
@@ -185,9 +190,7 @@
             if (todayStr < task.start_date) return 0;
             if (todayStr > task.deadline) return remaining;
 
-            const deadlineDate = new Date(task.deadline + 'T00:00:00');
-            const todayDate = new Date(todayStr + 'T00:00:00');
-            const daysLeft = Math.floor((deadlineDate - todayDate) / 86400000) + 1;
+            const daysLeft = diffDays(todayStr, task.deadline) + 1;
             if (daysLeft <= 0) return remaining;
 
             const futureRests = countFutureRestDays(todayStr, task.deadline, restDays);
