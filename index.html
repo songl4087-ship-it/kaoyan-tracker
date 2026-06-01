@@ -229,7 +229,7 @@
                 const log = todayLogs?.find(l => l.task_id === task.id);
                 const planned = calculateDailyPlan(task, todayStr, restDays || [], isRestToday);
                 return { task, planned, actual: log?.actual ?? null, checkedIn: log?.actual != null };
-            });
+            }).filter(p => p.planned > 0 || p.checkedIn);
 
             renderStats(plans, isRestToday);
             renderTodayTasks(plans, isRestToday);
